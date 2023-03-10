@@ -48,9 +48,10 @@ class SimpleDataset(Dataset):
 def normalize(df: pd.DataFrame, scaler: StandardScaler=None) -> tuple[pd.DataFrame, StandardScaler]:
     if scaler is None:
         scaler = StandardScaler()
-        df = scaler.fit_transform(df)
+        # keep dataframe; otherwise turns into ndarray
+        df = pd.DataFrame(scaler.fit_transform(df),columns = df.columns)
     else:
-        df = scaler.transform(df)
+        df = pd.DataFrame(scaler.fit_transform(df),columns = df.columns)
 
     return df, scaler
 
@@ -106,7 +107,11 @@ def train_epoch(dataloader, model, loss_fn, optimizer, device):
         optimizer.step()
 
         total_loss += loss.item()
-        correct += (pred.sigmoid().round() == labels).sum().item()
+
+        if isinstance(loss_fn, nn.BCEWithLogitsLoss):
+            correct += (pred.sigmoid().round() == labels).sum().item()
+        if isinstance(loss_fn, nn.MSELoss):
+            correct += (pred.argmax(1) == labels.argmax(1)).type(torch.float).sum().item()
 
     avg_loss = total_loss / num_batches
     accuracy = correct / size
@@ -128,7 +133,10 @@ def test_epoch(dataloader, model, loss_fn, device):
             pred = model(features)
             total_loss += loss_fn(pred, labels).item()
 
-            correct += (pred.sigmoid().round() == labels).sum().item()
+            if isinstance(loss_fn, nn.BCEWithLogitsLoss):
+                correct += (pred.sigmoid().round() == labels).sum().item()
+            if isinstance(loss_fn, nn.MSELoss):
+                correct += (pred.argmax(1) == labels.argmax(1)).type(torch.float).sum().item()
 
     avg_loss = total_loss / num_batches
     accuracy = correct / size

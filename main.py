@@ -13,34 +13,29 @@ if __name__ == "__main__":
     data_folder = Path("data/")
     filename = "atezolizumab_rngdefault1234_12500"
 
-    # filepath = data_folder / (filename + '.mat')
-
-    # # convert .mat to dataframe
-    # df = parse_mat(filename + '.mat')
-
     # convert csv to dataframe
     # to convert .mat to .csv, run parse_mat.py
     df = pd.read_csv(data_folder / (filename + '.csv'))
 
     # Hyperparameters
     k_folds = 10
-    num_epochs = 100
-    batch_size = 50
+    num_epochs = 500
+    batch_size = 500
     learning_rate = 1e-4
-    loss_fn = nn.BCEWithLogitsLoss()
-
-    # For fold results
-    results = {'train_loss': [], 'test_loss': [],'train_acc':[],'test_acc':[]}
+    loss_fn = nn.MSELoss()
 
     torch.manual_seed(42)
 
     # Use GPU if available
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    kfold = KFold(n_splits=k_folds, shuffle=True)
-
     # remove NP rows before kfold split
     df = remove_nonpatients(df)
+
+    kfold = KFold(n_splits=k_folds, shuffle=True)
+
+    # For fold results
+    results = {'train_loss': [], 'test_loss': [],'train_acc':[],'test_acc':[]}
 
     # K-fold Cross Validation model evaluation
     for fold, (train_idx, test_idx) in enumerate(kfold.split(df)):
@@ -48,38 +43,40 @@ if __name__ == "__main__":
         print(f'FOLD {fold+1}')
         print('--------------------------------')
 
-
-        
-
         # separate dataframe into features and labels
         features = df.drop('RECIST', axis=1)
         labels = df.loc[:, ['RECIST']] # extra bracket to keep 2D dataframe instead of 1D series
 
         # binary or multiclass encoding
-        labels = encode_recist(labels)
+        labels = encode_recist(labels, binary=False)
+
+        # split dataset as a dataframe for normalization and imputation steps
+        X_train = features.iloc[train_idx]
+        y_train = labels.iloc[train_idx]
+
+        X_test = features.iloc[test_idx]
+        y_test = labels.iloc[test_idx]
+
+        # use fit from X_train to normalize X_test for consistent performance
+        X_train, scaler = normalize(X_train)
+        X_test,_ = normalize(X_test, scaler)
 
         # convert from dataframes to tensors
-        features = torch.FloatTensor(features.values)
-        labels = torch.FloatTensor(labels.values)
+        X_train = torch.FloatTensor(X_train.values)
+        y_train = torch.FloatTensor(y_train.values)
 
-        dataset = TensorDataset(features, labels)
+        X_test = torch.FloatTensor(X_test.values)
+        y_test = torch.FloatTensor(y_test.values)
 
-        # Low accuracy with SubsetRandomSampler method; not sure why
-        train_dataset = Subset(dataset, train_idx)
-        test_dataset = Subset(dataset, test_idx)
+        train_dataset = TensorDataset(X_train, y_train)
+        test_dataset = TensorDataset(X_test, y_test)
 
         # Define data loaders for training and testing data in this fold
-        train_dataloader = DataLoader(train_dataset, batch_size=batch_size)
-        test_dataloader = DataLoader(test_dataset, batch_size=batch_size)
+        train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+        test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=True)
 
         # Initialize neural network
-        # model = NeuralNetwork().to(device)
-        model = nn.Sequential(
-                    nn.Linear(38, 26),
-                    nn.ReLU(),
-                    nn.Linear(26, 1),
-                    # nn.Sigmoid(),
-                    ).to(device)
+        model = MultiClassNN().to(device)
 
         # Initialize optimizer
         optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
