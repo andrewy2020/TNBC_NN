@@ -3,10 +3,10 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 
-def parse_mat(filepath):
+def mat_to_df(filename: str | Path) -> pd.DataFrame:
 
     # if no squeeze, values are wrapped in [[]] for some reason...
-    mat_contents = sio.loadmat(filepath, squeeze_me=True)
+    mat_contents = sio.loadmat(filename, squeeze_me=True)
 
     # dataframe for input features
     # using item() after squeeze restores proper dimensions; otherwise ()
@@ -18,32 +18,22 @@ def parse_mat(filepath):
     labels = mat_contents['params_out']['RECIST'].item()
     df['RECIST'] = labels
 
-    # encode RECIST values for binary classification
-    df['RECIST'].replace('CR/PR', 1, inplace=True)
-    df['RECIST'].replace(['SD', 'PD'], 0, inplace=True)
-    df['RECIST'].replace('NP', np.nan, inplace=True)
-
-    # remove rows of non-patients
-    df.dropna(subset=['RECIST'],inplace = True)
-
-    # reset indices; otherwise drops create gaps
-    df.reset_index(drop=True, inplace=True)
-
     return df
 
 if __name__ == "__main__":
     # path to matlab workspace
     data_folder = Path("data/")
 
-    filename = "atezolizumab_rngdefault_500"
+    filenames = ["atezolizumab_rngdefault_2500", "atezolizumab_rng1_2500", "atezolizumab_rng2_2500", "atezolizumab_rng3_2500", "atezolizumab_rng4_2500"]
+    frames = []
 
-    filepath = data_folder / (filename + '.mat')
-
-    # convert .mat to dataframe
-    df = parse_mat(filepath)
+    for filename in filenames:
+        filepath = data_folder / (filename + '.mat')
+        # convert .mat to dataframe
+        df = mat_to_df(filepath)
+        frames.append(df)
     
-    df.to_csv(data_folder / (filename + '.csv'), index=False)
+        df.to_csv(data_folder / (filename + '.csv'), index=False)
 
-
-
-
+    df_tot = pd.concat(frames)
+    df_tot.to_csv(data_folder / ("atezolizumab_rngdefault1234_12500" + '.csv'), index=False)
